@@ -3,6 +3,8 @@
 A single-file HTML demo that renders a perspective wireframe cube and shifts
 its depth based on your head position. It uses the device camera with native
 FaceDetector when available and falls back to MediaPipe from a CDN.
+<img width="1133" height="563" alt="image" src="https://github.com/user-attachments/assets/bff98a04-d3b5-4690-b0fc-cfcc630d4e7d" />
+<img width="759" height="721" alt="image" src="https://github.com/user-attachments/assets/82a62d3b-dda6-440d-a65d-2f6435aab20a" />
 
 ## Quick Start
 
