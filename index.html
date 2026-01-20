@@ -1,0 +1,684 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Face-Tracked Wireframe Cube</title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600&display=swap");
+
+      :root {
+        --bg-0: #0c1116;
+        --bg-1: #141c27;
+        --bg-2: #1d2a3a;
+        --ink-0: #eef3f8;
+        --ink-1: #b9c7d9;
+        --accent: #f2b574;
+        --panel: rgba(12, 17, 22, 0.65);
+        --line: rgba(210, 224, 241, 0.85);
+        --glow: rgba(84, 196, 255, 0.22);
+        --app-width: 100vw;
+        --app-height: 100vh;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        color: var(--ink-0);
+        font-family: "Space Grotesk", "Trebuchet MS", sans-serif;
+        background:
+          radial-gradient(120% 120% at 15% 0%, #263146 0%, #141b24 45%, #0b0e12 100%),
+          linear-gradient(140deg, rgba(255, 255, 255, 0.06), transparent 55%);
+        display: grid;
+        place-items: center;
+        padding: 24px;
+      }
+
+      body.fullscreen {
+        padding: 0;
+        overflow: hidden;
+      }
+
+      .app {
+        width: min(1080px, 100%);
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 28px;
+        align-items: center;
+      }
+
+      body.fullscreen .app {
+        width: var(--app-width);
+        height: var(--app-height);
+        grid-template-columns: 1fr;
+        align-items: stretch;
+        justify-items: stretch;
+      }
+
+      body.fullscreen .panel {
+        display: none;
+      }
+
+      .panel {
+        padding: 24px 22px;
+        background: var(--panel);
+        border-radius: 16px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+        backdrop-filter: blur(10px);
+      }
+
+      h1 {
+        margin: 0 0 12px;
+        font-size: clamp(1.6rem, 2.2vw, 2.4rem);
+        letter-spacing: 0.4px;
+      }
+
+      p {
+        margin: 0 0 18px;
+        color: var(--ink-1);
+        line-height: 1.45;
+      }
+
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: center;
+      }
+
+      button {
+        border: none;
+        padding: 10px 16px;
+        border-radius: 999px;
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: #1a1408;
+        background: linear-gradient(135deg, #ffcc8f, var(--accent));
+        cursor: pointer;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+      }
+
+      button:disabled {
+        opacity: 0.65;
+        cursor: not-allowed;
+        transform: none;
+      }
+
+      button:not(:disabled):hover {
+        transform: translateY(-1px);
+        box-shadow: 0 12px 30px rgba(242, 181, 116, 0.25);
+      }
+
+      .status {
+        font-size: 0.9rem;
+        color: var(--ink-1);
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+      }
+
+      .note {
+        margin-top: 16px;
+        font-size: 0.85rem;
+        color: rgba(255, 255, 255, 0.6);
+      }
+
+      .stage {
+        position: relative;
+        width: min(72vw, 520px);
+        aspect-ratio: 1;
+        border-radius: 24px;
+        background:
+          linear-gradient(160deg, rgba(255, 255, 255, 0.06), transparent 60%),
+          radial-gradient(120% 120% at 100% 0%, rgba(242, 181, 116, 0.18), transparent 60%);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.4);
+        display: grid;
+        place-items: center;
+      }
+
+      body.fullscreen .stage {
+        width: var(--app-width);
+        height: var(--app-height);
+        aspect-ratio: auto;
+        border-radius: 0;
+        border: none;
+        box-shadow: none;
+      }
+
+      canvas {
+        width: 100%;
+        height: 100%;
+      }
+
+      video {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      @media (max-width: 900px) {
+        .app {
+          grid-template-columns: 1fr;
+        }
+
+        .stage {
+          width: min(84vw, 480px);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="app">
+      <section class="panel">
+        <h1>Face-Tracked Wireframe</h1>
+        <p>
+          Allow camera access to track your face position. When you move left,
+          the far end of the cube shifts right (and vice versa). Vertical motion
+          nudges the depth the same way.
+        </p>
+        <div class="controls">
+          <button id="start">Enable camera</button>
+          <span class="status" id="status">Camera idle.</span>
+        </div>
+        <div class="note">
+          Tip: Works best in Chrome or Edge over https or localhost. If the
+          native FaceDetector API is unavailable, a MediaPipe fallback loads
+          from a CDN. Fullscreen starts after camera permission is granted.
+        </div>
+      </section>
+
+      <section class="stage">
+        <canvas id="cube" aria-label="Wireframe cube"></canvas>
+      </section>
+    </main>
+
+    <video id="video" autoplay playsinline muted></video>
+
+    <script>
+      const canvas = document.getElementById("cube");
+      const ctx = canvas.getContext("2d");
+      const video = document.getElementById("video");
+      const startButton = document.getElementById("start");
+      const statusEl = document.getElementById("status");
+
+      let nativeDetector = null;
+      let mpDetector = null;
+      let detectorMode = "none";
+      let running = false;
+      let canvasRect = canvas.getBoundingClientRect();
+      let lastStatus = "";
+
+      const state = {
+        targetX: 0,
+        targetY: 0,
+        smoothX: 0,
+        smoothY: 0,
+        lastDetect: 0,
+        detectionInFlight: false,
+      };
+
+      const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+      const lerp = (a, b, t) => a + (b - a) * t;
+      const MEDIAPIPE_URL =
+        "https://cdn.jsdelivr.net/npm/@mediapipe/face_detection";
+      const viewportSize = {
+        width: window.innerWidth,
+        height: window.innerHeight,
+      };
+
+      function getViewportSize() {
+        const viewport = window.visualViewport;
+        const width = Math.floor(viewport ? viewport.width : window.innerWidth);
+        const height = Math.floor(viewport ? viewport.height : window.innerHeight);
+        return {
+          width: Math.max(1, width),
+          height: Math.max(1, height),
+        };
+      }
+
+      function updateViewportSize() {
+        const { width, height } = getViewportSize();
+        viewportSize.width = width;
+        viewportSize.height = height;
+        document.documentElement.style.setProperty("--app-width", `${width}px`);
+        document.documentElement.style.setProperty("--app-height", `${height}px`);
+        resizeCanvas();
+      }
+
+      function setStatus(message) {
+        if (message !== lastStatus) {
+          statusEl.textContent = message;
+          lastStatus = message;
+        }
+      }
+
+      function resizeCanvas() {
+        if (document.body.classList.contains("fullscreen")) {
+          canvasRect = { width: viewportSize.width, height: viewportSize.height };
+        } else {
+          canvasRect = canvas.getBoundingClientRect();
+        }
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = Math.max(2, Math.floor(canvasRect.width * dpr));
+        canvas.height = Math.max(2, Math.floor(canvasRect.height * dpr));
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+
+      function getSquarePoints(cx, cy, size) {
+        const half = size / 2;
+        return [
+          { x: cx - half, y: cy - half },
+          { x: cx + half, y: cy - half },
+          { x: cx + half, y: cy + half },
+          { x: cx - half, y: cy + half },
+        ];
+      }
+
+      function drawPath(points) {
+        ctx.moveTo(points[0].x, points[0].y);
+        for (let i = 1; i < points.length; i += 1) {
+          ctx.lineTo(points[i].x, points[i].y);
+        }
+        ctx.lineTo(points[0].x, points[0].y);
+      }
+
+      function drawDots(points, radius) {
+        ctx.beginPath();
+        for (const point of points) {
+          ctx.moveTo(point.x + radius, point.y);
+          ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
+        }
+        ctx.fill();
+      }
+
+      function gridPoints(square, count) {
+        const [topLeft, topRight, bottomRight, bottomLeft] = square;
+        const points = [];
+        for (let row = 0; row <= count; row += 1) {
+          const v = row / count;
+          const left = interpolatePoints(topLeft, bottomLeft, v);
+          const right = interpolatePoints(topRight, bottomRight, v);
+          for (let col = 0; col <= count; col += 1) {
+            const u = col / count;
+            points.push(interpolatePoints(left, right, u));
+          }
+        }
+        return points;
+      }
+
+      function getBounds(points) {
+        let minX = Infinity;
+        let minY = Infinity;
+        let maxX = -Infinity;
+        let maxY = -Infinity;
+        for (const point of points) {
+          minX = Math.min(minX, point.x);
+          minY = Math.min(minY, point.y);
+          maxX = Math.max(maxX, point.x);
+          maxY = Math.max(maxY, point.y);
+        }
+        return { minX, minY, maxX, maxY };
+      }
+
+      function scalePoints(points, cx, cy, scale) {
+        return points.map((point) => ({
+          x: cx + (point.x - cx) * scale,
+          y: cy + (point.y - cy) * scale,
+        }));
+      }
+
+      function interpolatePoints(a, b, t) {
+        return { x: lerp(a.x, b.x, t), y: lerp(a.y, b.y, t) };
+      }
+
+      function drawCube(offsetX, offsetY) {
+        const width = canvasRect.width;
+        const height = canvasRect.height;
+        ctx.clearRect(0, 0, width, height);
+
+        const centerX = width / 2;
+        const centerY = height / 2;
+        const fullScreenMode = document.body.classList.contains("fullscreen");
+        const minSide = Math.min(width, height);
+        const glowWidth = 8;
+        const lineWidth = 2;
+        const dotRadiusFront = 2.6;
+        const dotRadiusFar = 2.2;
+        const dotRadiusEdge = 1.6;
+        const dotRadiusBack = fullScreenMode ? 1.8 : 1.4;
+        const paddingBase = fullScreenMode ? 36 : 20;
+        const extraMargin =
+          glowWidth / 2 +
+          Math.max(dotRadiusFront, dotRadiusFar, dotRadiusBack) +
+          3;
+        const padding = paddingBase + extraMargin;
+        const maxBase = Math.max(1, minSide - padding * 2);
+        let baseSize = fullScreenMode ? maxBase : minSide * 0.46;
+        if (baseSize > maxBase) {
+          baseSize = maxBase;
+        }
+        const farScale = fullScreenMode ? 0.66 : 0.62;
+        const depthShift = minSide * (fullScreenMode ? 0.22 : 0.18);
+        const farHalf = (baseSize * farScale) / 2;
+        const maxShiftX = Math.max(0, width / 2 - padding - farHalf);
+        const maxShiftY = Math.max(0, height / 2 - padding - farHalf);
+        const shiftX = clamp(offsetX, -1, 1) * Math.min(depthShift, maxShiftX);
+        const shiftY = clamp(offsetY, -1, 1) * Math.min(depthShift, maxShiftY);
+
+        const farCenterX = centerX + shiftX;
+        const farCenterY = centerY - shiftY;
+
+        let frontSquare = getSquarePoints(centerX, centerY, baseSize);
+        let farSquare = getSquarePoints(
+          farCenterX,
+          farCenterY,
+          baseSize * farScale
+        );
+        const availableW = Math.max(1, width - padding * 2);
+        const availableH = Math.max(1, height - padding * 2);
+        const bounds = getBounds(frontSquare.concat(farSquare));
+        const boxW = bounds.maxX - bounds.minX;
+        const boxH = bounds.maxY - bounds.minY;
+        const scale = Math.min(1, availableW / boxW, availableH / boxH);
+        if (scale < 1) {
+          frontSquare = scalePoints(frontSquare, centerX, centerY, scale);
+          farSquare = scalePoints(farSquare, centerX, centerY, scale);
+        }
+        const sliceCount = 6;
+        const sliceSquares = [];
+        for (let i = 1; i < sliceCount; i += 1) {
+          const t = i / sliceCount;
+          sliceSquares.push(
+            frontSquare.map((point, index) =>
+              interpolatePoints(point, farSquare[index], t)
+            )
+          );
+        }
+        const depthGridCount = fullScreenMode ? 4 : 3;
+        const depthFrontGrid = gridPoints(frontSquare, depthGridCount);
+        const depthBackGrid = gridPoints(farSquare, depthGridCount);
+
+        ctx.lineJoin = "round";
+
+        ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue(
+          "--glow"
+        );
+        ctx.lineWidth = glowWidth;
+        ctx.beginPath();
+        drawPath(frontSquare);
+        drawPath(farSquare);
+        for (let i = 0; i < 4; i += 1) {
+          ctx.moveTo(frontSquare[i].x, frontSquare[i].y);
+          ctx.lineTo(farSquare[i].x, farSquare[i].y);
+        }
+        ctx.stroke();
+
+        ctx.save();
+        ctx.strokeStyle = "rgba(130, 190, 235, 0.35)";
+        ctx.lineWidth = 1;
+        for (const square of sliceSquares) {
+          ctx.beginPath();
+          drawPath(square);
+          ctx.stroke();
+        }
+        ctx.restore();
+
+        ctx.save();
+        ctx.strokeStyle = "rgba(140, 190, 240, 0.25)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        const gridSpan = depthGridCount + 1;
+        for (let i = 0; i < depthFrontGrid.length; i += 1) {
+          const row = Math.floor(i / gridSpan);
+          const col = i % gridSpan;
+          if (
+            row === 0 ||
+            col === 0 ||
+            row === depthGridCount ||
+            col === depthGridCount
+          ) {
+            continue;
+          }
+          ctx.moveTo(depthFrontGrid[i].x, depthFrontGrid[i].y);
+          ctx.lineTo(depthBackGrid[i].x, depthBackGrid[i].y);
+        }
+        ctx.stroke();
+
+        ctx.strokeStyle = "rgba(170, 210, 255, 0.45)";
+        ctx.beginPath();
+        for (let i = 0; i < depthFrontGrid.length; i += 1) {
+          const row = Math.floor(i / gridSpan);
+          const col = i % gridSpan;
+          const onEdge =
+            row === 0 ||
+            col === 0 ||
+            row === depthGridCount ||
+            col === depthGridCount;
+          if (!onEdge) {
+            continue;
+          }
+          ctx.moveTo(depthFrontGrid[i].x, depthFrontGrid[i].y);
+          ctx.lineTo(depthBackGrid[i].x, depthBackGrid[i].y);
+        }
+        ctx.stroke();
+        ctx.restore();
+
+        ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue(
+          "--line"
+        );
+        ctx.lineWidth = lineWidth;
+        ctx.beginPath();
+        drawPath(frontSquare);
+        drawPath(farSquare);
+        for (let i = 0; i < 4; i += 1) {
+          ctx.moveTo(frontSquare[i].x, frontSquare[i].y);
+          ctx.lineTo(farSquare[i].x, farSquare[i].y);
+        }
+        ctx.stroke();
+
+        ctx.save();
+        ctx.fillStyle = "rgba(242, 245, 250, 0.85)";
+        drawDots(frontSquare, dotRadiusFront);
+        drawDots(farSquare, dotRadiusFar);
+        ctx.fillStyle = "rgba(190, 220, 255, 0.55)";
+        for (let i = 0; i < 4; i += 1) {
+          const start = frontSquare[i];
+          const end = farSquare[i];
+          for (let step = 1; step < sliceCount; step += 1) {
+            const t = step / sliceCount;
+            drawDots([interpolatePoints(start, end, t)], dotRadiusEdge);
+          }
+        }
+        ctx.fillStyle = "rgba(170, 210, 255, 0.4)";
+        const backGridDots = gridPoints(farSquare, fullScreenMode ? 7 : 5);
+        drawDots(backGridDots, dotRadiusBack);
+        ctx.restore();
+      }
+
+      function applyFaceCenter(normX, normY) {
+        state.targetX = clamp((normX - 0.5) * 2, -1, 1);
+        state.targetY = clamp((normY - 0.5) * 2, -1, 1);
+      }
+
+      function handleNoFace() {
+        state.targetX *= 0.9;
+        state.targetY *= 0.9;
+        setStatus("Camera active. No face detected.");
+      }
+
+      function handleMediaPipeResults(results) {
+        if (!results || !results.detections || results.detections.length === 0) {
+          handleNoFace();
+          return;
+        }
+
+        const detection = results.detections[0];
+        if (detection.boundingBox) {
+          const box = detection.boundingBox;
+          let centerX = box.xCenter;
+          let centerY = box.yCenter;
+          if (box.width > 1 || box.height > 1) {
+            centerX = centerX / video.videoWidth;
+            centerY = centerY / video.videoHeight;
+          }
+          applyFaceCenter(centerX, centerY);
+          setStatus("Tracking face.");
+          return;
+        }
+
+        if (
+          detection.locationData &&
+          detection.locationData.relativeBoundingBox
+        ) {
+          const box = detection.locationData.relativeBoundingBox;
+          applyFaceCenter(box.xMin + box.width / 2, box.yMin + box.height / 2);
+          setStatus("Tracking face.");
+          return;
+        }
+
+        handleNoFace();
+      }
+
+      async function updateFacePosition() {
+        if (state.detectionInFlight || video.readyState < 2) {
+          return;
+        }
+
+        state.detectionInFlight = true;
+        try {
+          if (detectorMode === "native" && nativeDetector) {
+            const faces = await nativeDetector.detect(video);
+            if (faces.length) {
+              const box = faces[0].boundingBox;
+              applyFaceCenter(
+                (box.x + box.width / 2) / video.videoWidth,
+                (box.y + box.height / 2) / video.videoHeight
+              );
+              setStatus("Tracking face.");
+            } else {
+              handleNoFace();
+            }
+          } else if (detectorMode === "mediapipe" && mpDetector) {
+            await mpDetector.send({ image: video });
+          }
+        } catch (error) {
+          setStatus("Face detection error.");
+        } finally {
+          state.detectionInFlight = false;
+        }
+      }
+
+      function loop(timestamp) {
+        if (running && timestamp - state.lastDetect > 100) {
+          state.lastDetect = timestamp;
+          updateFacePosition();
+        }
+
+        state.smoothX = lerp(state.smoothX, state.targetX, 0.12);
+        state.smoothY = lerp(state.smoothY, state.targetY, 0.12);
+
+        drawCube(state.smoothX, state.smoothY);
+        requestAnimationFrame(loop);
+      }
+
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement("script");
+          script.src = src;
+          script.async = true;
+          script.crossOrigin = "anonymous";
+          script.onload = () => resolve();
+          script.onerror = () => reject(new Error(`Failed to load ${src}`));
+          document.head.appendChild(script);
+        });
+      }
+
+      async function initMediaPipe() {
+        if (window.FaceDetection) {
+          return;
+        }
+        await loadScript(`${MEDIAPIPE_URL}/face_detection.js`);
+        if (!window.FaceDetection) {
+          throw new Error("MediaPipe FaceDetection unavailable.");
+        }
+      }
+
+      async function startCamera() {
+        if (running) {
+          return;
+        }
+
+        startButton.disabled = true;
+        setStatus("Requesting camera access...");
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: "user" },
+            audio: false,
+          });
+          video.srcObject = stream;
+          await video.play();
+
+          if (!document.fullscreenElement) {
+            const request =
+              document.documentElement.requestFullscreen ||
+              document.documentElement.webkitRequestFullscreen;
+            if (request) {
+              await request.call(document.documentElement);
+            }
+          }
+
+          if ("FaceDetector" in window) {
+            nativeDetector = new FaceDetector({
+              fastMode: true,
+              maxDetectedFaces: 1,
+            });
+            detectorMode = "native";
+            setStatus("Camera active. Face tracker ready.");
+          } else {
+            setStatus("Loading fallback face tracker...");
+            await initMediaPipe();
+            mpDetector = new FaceDetection({
+              locateFile: (file) => `${MEDIAPIPE_URL}/${file}`,
+            });
+            mpDetector.setOptions({
+              model: "short",
+              minDetectionConfidence: 0.55,
+            });
+            mpDetector.onResults(handleMediaPipeResults);
+            detectorMode = "mediapipe";
+            setStatus("Camera active. MediaPipe tracker ready.");
+          }
+
+          running = true;
+          requestAnimationFrame(loop);
+        } catch (error) {
+          setStatus("Camera or face tracker unavailable.");
+          startButton.disabled = false;
+        }
+      }
+
+      startButton.addEventListener("click", startCamera);
+      document.addEventListener("fullscreenchange", () => {
+        const active =
+          document.fullscreenElement || document.webkitFullscreenElement;
+        document.body.classList.toggle("fullscreen", Boolean(active));
+        updateViewportSize();
+      });
+      window.addEventListener("resize", updateViewportSize);
+      if (window.visualViewport) {
+        window.visualViewport.addEventListener("resize", updateViewportSize);
+      }
+      updateViewportSize();
+      drawCube(0, 0);
+    </script>
+  </body>
+</html>
